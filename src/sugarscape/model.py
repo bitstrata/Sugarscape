@@ -1,10 +1,26 @@
 from __future__ import annotations
 import random
 import numpy as np
+import math
 import mesa
 from .schedulers import ByTypeScheduler
 from .agents import Sugar, Spice, Trader
 from .utils import data_path, trade_volume_unique, price_gmean, get_trade
+
+class DeathMarker(mesa.Agent):
+    """Lightweight 'ghost' left behind when a Trader dies (for visualization)."""
+    def __init__(self, unique_id, model, pos, ttl=8):
+        super().__init__(unique_id, model)
+        self.pos = pos
+        self.ttl = ttl
+
+    def step(self):
+        self.ttl -= 1
+        if self.ttl <= 0:
+            # remove ourselves
+            self.model.grid.remove_agent(self)
+            # if you’re using a ByTypeScheduler, also:
+            self.model.schedule.remove(self)
 
 class SugarscapeG1mt(mesa.Model):
     def __init__(self,
@@ -35,6 +51,11 @@ class SugarscapeG1mt(mesa.Model):
         self.metabolism_max = metabolism_max
         self.vision_min = vision_min
         self.vision_max = vision_max
+
+        self.sugar_max = float(np.max(sugar_distribution))
+        self.spice_max = float(np.max(spice_distribution))
+        # default viz scale for turning welfare into green channel (tweak live in the UI)
+        self.viz_welfare_cap = 100.0
 
         self.schedule = ByTypeScheduler(self)
         self.grid = mesa.space.MultiGrid(self.width, self.height, torus=False)
@@ -90,6 +111,25 @@ class SugarscapeG1mt(mesa.Model):
         traders = list(self.schedule.agents_by_type.get(Trader, {}).values())
         self.random.shuffle(traders)
         return traders
+    
+    def get_sugar_amount_at(self, pos):
+        for a in self.grid.get_cell_list_contents(pos):
+            if isinstance(a, Sugar):
+                return a.amount
+        return 0.0
+
+    def get_spice_amount_at(self, pos):
+        for a in self.grid.get_cell_list_contents(pos):
+            if isinstance(a, Spice):
+                return a.amount
+        return 0.0
+
+    def spawn_death_marker(self, pos):
+        """Drop a short-lived marker to visualize where a trader died."""
+        uid = f"dead-{self.schedule.steps}-{pos}"
+        m = DeathMarker(uid, self, pos, ttl=8)
+        self.grid.place_agent(m, pos)
+        self.schedule.add(m)
 
     def step(self):
         from .agents import Sugar, Spice, Trader
@@ -98,6 +138,9 @@ class SugarscapeG1mt(mesa.Model):
             s.step()
         for p in self.schedule.agents_by_type.get(Spice, {}).values():
             p.step()
+        #     also step the DeathMarkers so their TTL counts down ---
+        for mark in list(self.schedule.agents_by_type.get(DeathMarker, {}).values()):
+            mark.step()
         # traders move/eat/die
         for t in self._randomize_traders():
             t.prices = []

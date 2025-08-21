@@ -198,7 +198,10 @@ class Trader(mesa.Agent):
         self.spice = max(0, self.spice - self.metabolism_spice)
 
     def maybe_die(self):
-        if self.sugar <= 0 and self.spice <= 0:
+        if self.is_starved():
+            # leave a short-lived 'ghost' for the viz
+            self.model.spawn_death_marker(self.pos)
+            # remove trader
             self.model.grid.remove_agent(self)
             self.model.schedule.remove(self)
 
