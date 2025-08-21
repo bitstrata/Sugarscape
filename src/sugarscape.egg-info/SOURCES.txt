@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/sugarscape/__init__.py
+src/sugarscape/agents.py
+src/sugarscape/animate.py
+src/sugarscape/model.py
+src/sugarscape/schedulers.py
+src/sugarscape/utils.py
+src/sugarscape/viz.py
+src/sugarscape.egg-info/PKG-INFO
+src/sugarscape.egg-info/SOURCES.txt
+src/sugarscape.egg-info/dependency_links.txt
+src/sugarscape.egg-info/top_level.txt
+tests/test_model_smoke.py
+tests/test_utils.py

@@ -1,0 +1,10 @@
+mesa==3.2.0
+numpy
+pandas
+matplotlib
+networkx
+solara
+altair
+uvicorn
+python-multipart
+watchfiles
