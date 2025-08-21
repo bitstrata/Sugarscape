@@ -1,11 +1,20 @@
+# pyproject.toml
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "sugarscape"
 version = "0.1.0"
-requires-python = ">=3.11"
+description = "Sugarscape G1mt in Mesa"
+requires-python = ">=3.9"
+dependencies = [
+  "mesa>=3.2,<3.3",
+  "numpy",
+  "pandas",
+  "matplotlib",
+  "solara>=1.28.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -189,12 +189,21 @@ class Trader(mesa.Agent):
         self.model.random.shuffle(finals)
         self.model.grid.move_agent(self, finals[0])
 
-    def eat(self):
+    def harvest(self):
+        # collect sugar in this cell
         p = self.get_sugar(self.pos)
-        if p: self.sugar += p.amount; p.amount = 0
-        self.sugar = max(0, self.sugar - self.metabolism_sugar)
+        if p:
+            self.sugar += p.amount
+            p.amount = 0
+        # collect spice in this cell
         q = self.get_spice(self.pos)
-        if q: self.spice += q.amount; q.amount = 0
+        if q:
+            self.spice += q.amount
+            q.amount = 0
+
+    def burn(self):
+        # metabolize after trading
+        self.sugar = max(0, self.sugar - self.metabolism_sugar)
         self.spice = max(0, self.spice - self.metabolism_spice)
 
     def maybe_die(self):
@@ -204,6 +213,10 @@ class Trader(mesa.Agent):
             # remove trader
             self.model.grid.remove_agent(self)
             self.model.schedule.remove(self)
+
+    def is_starved(self):
+        # Returns True if the trader has no sugar or spice left.
+        return self.sugar <= 0 and self.spice <= 0
 
     def trade_with_neighbor(self):
         nbors = [
