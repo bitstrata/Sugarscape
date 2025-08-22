@@ -18,11 +18,11 @@ class DeathMarker(mesa.Agent):
             self.unique_id = unique_id
         self.ttl = ttl  # DO NOT set self.pos here; MultiGrid will set it
 
-    def step(self):
-        self.ttl -= 1
-        if self.ttl <= 0:
-            self.model.grid.remove_agent(self)
-            self.model.schedule.remove(self)
+    #def step(self):
+    #    self.ttl -= 1
+    #    if self.ttl <= 0:
+    #        self.model.grid.remove_agent(self)
+    #        self.model.schedule.remove(self)
 
 
 class SugarscapeG1mt(mesa.Model):
@@ -30,12 +30,17 @@ class SugarscapeG1mt(mesa.Model):
                  moore_movement=True,
                  width=50, height=50,
                  initial_population=200,
-                 endowment_min=13, endowment_max=21,
-                 metabolism_min=1, metabolism_max=2,
-                 vision_min=5, vision_max=8,
+                 endowment_min=2, endowment_max=3,
+                 metabolism_min=2, metabolism_max=3,
+                 vision_min=3, vision_max=5,
                  seed=None, 
-                 map_path: str | None = None,):
+                 map_path: str | None = None,
+                 sugar_noise_sigma: float = 0.5,
+                 spice_noise_sigma: float = 0.5,
+                 integerize_maps: bool = True,
+                 ):
         # seed Mesa RNG, fallback for older Mesa
+        self.np_random = np.random.default_rng(seed if seed is not None else None)
         try:
             super().__init__(seed=seed)
         except TypeError:
@@ -57,28 +62,40 @@ class SugarscapeG1mt(mesa.Model):
         self.vision_min = vision_min
         self.vision_max = vision_max
 
-        # --- Load landscape ---
+        # --- Load landscape (base) ---
         default_map = Path(__file__).resolve().parents[2] / "data" / "sugar-map.txt"
         map_file = Path(map_path) if map_path else default_map
         if not map_file.exists():
             raise FileNotFoundError(f"sugar-map not found: {map_file}")
 
-        sugar_distribution = np.genfromtxt(map_file)
-        sugar_distribution = sugar_distribution+1
-        # spice is mirrored horizontally, per your original code
-        spice_distribution = np.flip(sugar_distribution, 1)
-        spice_distribution = spice_distribution*2 - 1
+        # start from the same base heightmap
+        sugar_base = np.genfromtxt(map_file).astype(float) + 1.0
+        spice_base = np.flip(sugar_base, 1) * 2.0 - 1.0 
 
+        # helper to add Gaussian noise + clip + optional integerize
+        def _noisify(arr: np.ndarray, sigma: float) -> np.ndarray:
+            if sigma and sigma > 0:
+                noise = self.np_random.normal(loc=0.0, scale=sigma, size=arr.shape)
+                arr = arr + noise
+            # resources cannot be negative
+            arr = np.clip(arr, 0.0, None)
+            if integerize_maps:
+                arr = np.rint(arr).astype(int)
+            return arr
 
-        # --- Now safe to compute maxima (used by viz) ---
-        self.sugar_max = float(np.max(sugar_distribution))
-        self.spice_max = float(np.max(spice_distribution))
-        # default viz scale for turning welfare -> green
+        # --- Apply independent noise to sugar and spice ---
+        sugar_distribution = _noisify(sugar_base, sugar_noise_sigma)
+        spice_distribution = _noisify(spice_base, spice_noise_sigma)
+
+        # maxima (used by viz scaling)
+        self.sugar_max = float(np.max(sugar_distribution)) if sugar_distribution.size else 0.0
+        self.spice_max = float(np.max(spice_distribution)) if spice_distribution.size else 0.0
         self.viz_welfare_cap = 100.0
 
         self.schedule = ByTypeScheduler(self)
         self.grid = mesa.space.MultiGrid(self.width, self.height, torus=True)
         self._death_seq = 0
+        self._death_markers = []   # we manage TTL ourselves
 
         self.datacollector = mesa.DataCollector(
             model_reporters={
@@ -145,23 +162,30 @@ class SugarscapeG1mt(mesa.Model):
         return 0.0
 
     def spawn_death_marker(self, pos):
-        uid = f"dead-{self.schedule.steps}-{self._death_seq}"
-        self._death_seq += 1
+        #uid = f"dead-{self.schedule.steps}-{self._death_seq}"
+        #self._death_seq += 1
+        uid = f"dead-{self.schedule.steps}-{len(self._death_markers)}"
         mark = DeathMarker(uid, self, ttl=8)
         self.grid.place_agent(mark, pos)   # sets mark.pos for us
         self.schedule.add(mark)
 
     def step(self):
         from .agents import Sugar, Spice, Trader
-        # 1) resources grow
+        # fade out death markers
+        for mark in list(self._death_markers):
+            mark.ttl -= 1
+            if mark.ttl <= 0:
+                self.grid.remove_agent(mark)
+                self._death_markers.remove(mark)
+        # resources grow
         for s in self.schedule.agents_by_type.get(Sugar, {}).values():
             s.step()
         for p in self.schedule.agents_by_type.get(Spice, {}).values():
             p.step()
-        for mark in list(self.schedule.agents_by_type.get(DeathMarker, {}).values()):
-            mark.step()
+        #for mark in list(self.schedule.agents_by_type.get(DeathMarker, {}).values()):
+        #    mark.step()
 
-        # 2) traders move + harvest (no metabolization yet)
+        # traders move + harvest (no metabolization yet)
         traders = self._randomize_traders()
         for t in traders:
             t.prices = []
@@ -169,14 +193,14 @@ class SugarscapeG1mt(mesa.Model):
             t.move()
             t.harvest()     # <- collect first
 
-        # 3) trading rounds (now they have the harvest in hand)
+        # trading rounds (now they have the harvest in hand)
         for t in self._randomize_traders():
             t.trade_with_neighbor()
         # (Optionally a second trading pass for more equilibrium)
-        # for t in self._randomize_traders():
-        #     t.trade_with_neighbor()
+        for t in self._randomize_traders():
+            t.trade_with_neighbor()
 
-        # 4) metabolize and then deaths
+        # metabolize and then deaths
         for t in list(self.schedule.agents_by_type.get(Trader, {}).values()):
             t.burn()
             t.maybe_die()

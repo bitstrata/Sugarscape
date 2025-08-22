@@ -26,7 +26,11 @@ TraderPlot = make_plot_component("Trader", backend="matplotlib")
 VolumePlot = make_plot_component("Volume", backend="matplotlib")
 
 page = SolaraViz(
-    SugarscapeG1mt(seed=42),
+    SugarscapeG1mt(
+        seed=42,
+        sugar_noise_sigma=0.3,
+        spice_noise_sigma=0.5,
+        ),
     components=[Space, PricePlot, TraderPlot, VolumePlot],
     name="Sugarscape G1mt",
     play_interval=200,
